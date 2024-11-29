@@ -1,11 +1,12 @@
-import * as http from 'http'
-import { createDebugger, isObject } from '../../utils'
+import type * as http from 'node:http'
+import type * as net from 'node:net'
 import httpProxy from 'http-proxy'
-import { HMR_HEADER } from '../ws'
-import { Connect } from 'types/connect'
-import { HttpProxy } from 'types/http-proxy'
-import chalk from 'chalk'
-import { ResolvedConfig } from '../..'
+import type { Connect } from 'dep-types/connect'
+import type { HttpProxy } from 'dep-types/http-proxy'
+import colors from 'picocolors'
+import { createDebugger } from '../../utils'
+import type { CommonServerOptions, ResolvedConfig } from '../..'
+import type { HttpServer } from '..'
 
 const debug = createDebugger('vite:proxy')
 
@@ -23,37 +24,135 @@ export interface ProxyOptions extends HttpProxy.ServerOptions {
    */
   bypass?: (
     req: http.IncomingMessage,
-    res: http.ServerResponse,
-    options: ProxyOptions
+    /** undefined for WebSocket upgrade requests */
+    res: http.ServerResponse | undefined,
+    options: ProxyOptions,
   ) => void | null | undefined | false | string
+  /**
+   * rewrite the Origin header of a WebSocket request to match the target
+   *
+   * **Exercise caution as rewriting the Origin can leave the proxying open to [CSRF attacks](https://owasp.org/www-community/attacks/csrf).**
+   */
+  rewriteWsOrigin?: boolean | undefined
+}
+
+const rewriteOriginHeader = (
+  proxyReq: http.ClientRequest,
+  options: ProxyOptions,
+  config: ResolvedConfig,
+) => {
+  // Browsers may send Origin headers even with same-origin
+  // requests. It is common for WebSocket servers to check the Origin
+  // header, so if rewriteWsOrigin is true we change the Origin to match
+  // the target URL.
+  if (options.rewriteWsOrigin) {
+    const { target } = options
+
+    if (proxyReq.headersSent) {
+      config.logger.warn(
+        colors.yellow(
+          `Unable to rewrite Origin header as headers are already sent.`,
+        ),
+      )
+      return
+    }
+
+    if (proxyReq.getHeader('origin') && target) {
+      const changedOrigin =
+        typeof target === 'object'
+          ? `${target.protocol}//${target.host}`
+          : target
+
+      proxyReq.setHeader('origin', changedOrigin)
+    }
+  }
 }
 
 export function proxyMiddleware(
-  httpServer: http.Server | null,
-  config: ResolvedConfig
+  httpServer: HttpServer | null,
+  options: NonNullable<CommonServerOptions['proxy']>,
+  config: ResolvedConfig,
 ): Connect.NextHandleFunction {
-  const options = config.server.proxy!
-
   // lazy require only when proxy is used
   const proxies: Record<string, [HttpProxy.Server, ProxyOptions]> = {}
 
   Object.keys(options).forEach((context) => {
     let opts = options[context]
+    if (!opts) {
+      return
+    }
     if (typeof opts === 'string') {
       opts = { target: opts, changeOrigin: true } as ProxyOptions
     }
     const proxy = httpProxy.createProxyServer(opts) as HttpProxy.Server
 
-    proxy.on('error', (err) => {
-      config.logger.error(`${chalk.red(`http proxy error:`)}\n${err.stack}`, {
-        timestamp: true,
-        error: err
-      })
-    })
-
     if (opts.configure) {
       opts.configure(proxy, opts)
     }
+
+    proxy.on('error', (err, _req, originalRes) => {
+      // When it is ws proxy, res is net.Socket
+      // originalRes can be falsy if the proxy itself errored
+      const res = originalRes as http.ServerResponse | net.Socket | undefined
+      if (!res) {
+        config.logger.error(
+          `${colors.red(`http proxy error: ${err.message}`)}\n${err.stack}`,
+          {
+            timestamp: true,
+            error: err,
+          },
+        )
+      } else if ('req' in res) {
+        config.logger.error(
+          `${colors.red(`http proxy error: ${originalRes.req.url}`)}\n${
+            err.stack
+          }`,
+          {
+            timestamp: true,
+            error: err,
+          },
+        )
+        if (!res.headersSent && !res.writableEnded) {
+          res
+            .writeHead(500, {
+              'Content-Type': 'text/plain',
+            })
+            .end()
+        }
+      } else {
+        config.logger.error(`${colors.red(`ws proxy error:`)}\n${err.stack}`, {
+          timestamp: true,
+          error: err,
+        })
+        res.end()
+      }
+    })
+
+    proxy.on('proxyReqWs', (proxyReq, _req, socket, options) => {
+      rewriteOriginHeader(proxyReq, options, config)
+
+      socket.on('error', (err) => {
+        config.logger.error(
+          `${colors.red(`ws proxy socket error:`)}\n${err.stack}`,
+          {
+            timestamp: true,
+            error: err,
+          },
+        )
+      })
+    })
+
+    // https://github.com/http-party/node-http-proxy/issues/1520#issue-877626125
+    // https://github.com/chimurai/http-proxy-middleware/blob/cd58f962aec22c925b7df5140502978da8f87d5f/src/plugins/default/debug-proxy-errors-plugin.ts#L25-L37
+    proxy.on('proxyRes', (proxyRes, _req, res) => {
+      res.on('close', () => {
+        if (!res.writableEnded) {
+          debug?.('destroying proxyRes in proxyRes close event')
+          proxyRes.destroy()
+        }
+      })
+    })
+
     // clone before saving because http-proxy mutates the options
     proxies[context] = [proxy, { ...opts }]
   })
@@ -65,13 +164,27 @@ export function proxyMiddleware(
         if (doesProxyContextMatchUrl(context, url)) {
           const [proxy, opts] = proxies[context]
           if (
-            (opts.ws || opts.target?.toString().startsWith('ws:')) &&
-            req.headers['sec-websocket-protocol'] !== HMR_HEADER
+            opts.ws ||
+            opts.target?.toString().startsWith('ws:') ||
+            opts.target?.toString().startsWith('wss:')
           ) {
+            if (opts.bypass) {
+              const bypassResult = opts.bypass(req, undefined, opts)
+              if (typeof bypassResult === 'string') {
+                req.url = bypassResult
+                debug?.(`bypass: ${req.url} -> ${bypassResult}`)
+                return
+              } else if (bypassResult === false) {
+                debug?.(`bypass: ${req.url} -> 404`)
+                socket.end('HTTP/1.1 404 Not Found\r\n\r\n', '')
+                return
+              }
+            }
+
             if (opts.rewrite) {
               req.url = opts.rewrite(url)
             }
-            debug(`${req.url} -> ws ${opts.target}`)
+            debug?.(`${req.url} -> ws ${opts.target}`)
             proxy.ws(req, socket, head)
             return
           }
@@ -92,19 +205,16 @@ export function proxyMiddleware(
           const bypassResult = opts.bypass(req, res, opts)
           if (typeof bypassResult === 'string') {
             req.url = bypassResult
-            debug(`bypass: ${req.url} -> ${bypassResult}`)
-            return next()
-          } else if (isObject(bypassResult)) {
-            Object.assign(options, bypassResult)
-            debug(`bypass: ${req.url} use modified options: %O`, options)
+            debug?.(`bypass: ${req.url} -> ${bypassResult}`)
             return next()
           } else if (bypassResult === false) {
-            debug(`bypass: ${req.url} -> 404`)
-            return res.end(404)
+            debug?.(`bypass: ${req.url} -> 404`)
+            res.statusCode = 404
+            return res.end()
           }
         }
 
-        debug(`${req.url} -> ${opts.target || opts.forward}`)
+        debug?.(`${req.url} -> ${opts.target || opts.forward}`)
         if (opts.rewrite) {
           req.url = opts.rewrite(req.url!)
         }
@@ -118,7 +228,7 @@ export function proxyMiddleware(
 
 function doesProxyContextMatchUrl(context: string, url: string): boolean {
   return (
-    (context.startsWith('^') && new RegExp(context).test(url)) ||
+    (context[0] === '^' && new RegExp(context).test(url)) ||
     url.startsWith(context)
   )
 }

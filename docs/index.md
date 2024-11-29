@@ -1,41 +1,47 @@
 ---
-home: true
-heroImage: /logo.svg
-actionText: Get Started
-actionLink: /guide/
+title: Vite
+titleTemplate: Next Generation Frontend Tooling
+pageClass: landing dark
 
-altActionText: Learn More
-altActionLink: /guide/why
-
-features:
-  - title: 💡 Instant Server Start
-    details: On demand file serving over native ESM, no bundling required!
-  - title: ⚡️ Lightning Fast HMR
-    details: Hot Module Replacement (HMR) that stays fast regardless of app size.
-  - title: 🛠️ Rich Features
-    details: Out-of-the-box support for TypeScript, JSX, CSS and more.
-  - title: 📦 Optimized Build
-    details: Pre-configured Rollup build with multi-page and library mode support.
-  - title: 🔩 Universal Plugins
-    details: Rollup-superset plugin interface shared between dev and build.
-  - title: 🔑 Fully Typed APIs
-    details: Flexible programmatic APIs with full TypeScript typing.
-footer: MIT Licensed | Copyright © 2019-present Evan You & Vite Contributors
+layout: home
+aside: false
+editLink: false
+markdownStyles: false
 ---
 
-<div class="frontpage sponsors">
-  <h2>Sponsors</h2>
-  <a v-for="{ href, src, name, id } of sponsors.filter(s => s.tier === 'platinum')" class="platinum" :href="href" target="_blank" rel="noopener" aria-label="sponsor-img">
-    <img :src="src" :alt="name" :id="`sponsor-${id}`">
-  </a>
-  <br>
-  <a v-for="{ href, src, name, id } of sponsors.filter(s => s.tier !== 'platinum')" :href="href" target="_blank" rel="noopener" aria-label="sponsor-img">
-    <img :src="src" :alt="name" :id="`sponsor-${id}`">
-  </a>
-  <br>
-  <a href="https://github.com/sponsors/yyx990803" target="_blank" rel="noopener">Become a sponsor on GitHub</a>
-</div>
-
 <script setup>
-import sponsors from './.vitepress/theme/sponsors.json'
+import Hero from '.vitepress/theme/components/landing/1. hero-section/HeroSection.vue'
+import FeatureSection from './.vitepress/theme/components/landing/2. feature-section/FeatureSection.vue'
+import FrameworksSection from './.vitepress/theme/components/landing/3. frameworks-section/FrameworksSection.vue'
+import CommunitySection from './.vitepress/theme/components/landing/4. community-section/CommunitySection.vue'
+import SponsorSection from './.vitepress/theme/components/landing/5. sponsor-section/SponsorSection.vue'
+import GetStartedSection from '.vitepress/theme/components/landing/6. get-started-section/GetStartedSection.vue'
+import FeatureInstantServerStart from './.vitepress/theme/components/landing/2. feature-section/FeatureInstantServerStart.vue'
+import FeatureHMR from './.vitepress/theme/components/landing/2. feature-section/FeatureHMR.vue'
+import FeatureRichFeatures from './.vitepress/theme/components/landing/2. feature-section/FeatureRichFeatures.vue'
+import FeatureOptimizedBuild from './.vitepress/theme/components/landing/2. feature-section/FeatureOptimizedBuild.vue'
+import FeatureFlexiblePlugins from './.vitepress/theme/components/landing/2. feature-section/FeatureFlexiblePlugins.vue'
+import FeatureTypedAPI from './.vitepress/theme/components/landing/2. feature-section/FeatureTypedAPI.vue'
+import FeatureSSRSupport from './.vitepress/theme/components/landing/2. feature-section/FeatureSSRSupport.vue'
+import FeatureCI from './.vitepress/theme/components/landing/2. feature-section/FeatureCI.vue'
 </script>
+
+<div class="VPHome">
+  <Hero/>
+  <FeatureSection title="Redefining developer experience" description="Vite makes web development simple again" type="blue">
+    <FeatureInstantServerStart />
+    <FeatureHMR />
+    <FeatureRichFeatures />
+    <FeatureOptimizedBuild />
+  </FeatureSection>
+  <FeatureSection title="A shared foundation to build upon" type="pink" class="feature-section--flip">
+    <FeatureFlexiblePlugins />
+    <FeatureTypedAPI />
+    <FeatureSSRSupport />
+    <FeatureCI />
+  </FeatureSection>
+  <FrameworksSection />
+  <CommunitySection />
+  <SponsorSection />
+  <GetStartedSection />
+</div>

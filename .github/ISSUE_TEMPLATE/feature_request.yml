@@ -9,8 +9,9 @@ body:
   - type: textarea
     id: feature-description
     attributes:
-      label: Clear and concise description of the problem
-      description: "As a developer using Vite I want [goal / wish] so that [benefit]. If you intend to submit a PR for this issue, tell us in the description. Thanks!"
+      label: Description
+      description: "Clear and concise description of the problem. Please make the reason and usecases as detailed as possible. If you intend to submit a PR for this issue, tell us in the description. Thanks!"
+      placeholder: As a developer using Vite I want [goal / wish] so that [benefit].
     validations:
       required: true
   - type: textarea
@@ -40,7 +41,7 @@ body:
           required: true
         - label: Read the [Contributing Guidelines](https://github.com/vitejs/vite/blob/main/CONTRIBUTING.md).
           required: true
-        - label: Read the [docs](https://vitejs.dev/guide).
+        - label: Read the [docs](https://vite.dev/guide).
           required: true
         - label: Check that there isn't already an issue that request the same feature to avoid creating a duplicate.
           required: true

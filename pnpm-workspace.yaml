@@ -1,3 +1,5 @@
 packages:
   - 'packages/*'
-  - 'packages/playground/**'
+  - 'playground/**'
+  - 'packages/**/__tests__/**'
+  - docs

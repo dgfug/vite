@@ -1,21 +1,23 @@
-import fs from 'fs'
-import { dirname } from 'path'
-import { join } from 'path'
+import fs from 'node:fs'
+import { dirname, join } from 'node:path'
 import { isFileReadable } from '../utils'
 
 // https://github.com/vitejs/vite/issues/2820#issuecomment-812495079
 const ROOT_FILES = [
   // '.git',
 
-  // https://pnpm.js.org/workspaces/
-  'pnpm-workspace.yaml'
+  // https://pnpm.io/workspaces/
+  'pnpm-workspace.yaml',
 
   // https://rushjs.io/pages/advanced/config_files/
   // 'rush.json',
 
   // https://nx.dev/latest/react/getting-started/nx-setup
   // 'workspace.json',
-  // 'nx.json'
+  // 'nx.json',
+
+  // https://github.com/lerna/lerna#lernajson
+  'lerna.json',
 ]
 
 // npm: https://docs.npmjs.com/cli/v7/using-npm/workspaces#installing-workspaces
@@ -25,8 +27,12 @@ function hasWorkspacePackageJSON(root: string): boolean {
   if (!isFileReadable(path)) {
     return false
   }
-  const content = JSON.parse(fs.readFileSync(path, 'utf-8')) || {}
-  return !!content.workspaces
+  try {
+    const content = JSON.parse(fs.readFileSync(path, 'utf-8')) || {}
+    return !!content.workspaces
+  } catch {
+    return false
+  }
 }
 
 function hasRootFile(root: string): boolean {
@@ -56,7 +62,7 @@ export function searchForPackageRoot(current: string, root = current): string {
  */
 export function searchForWorkspaceRoot(
   current: string,
-  root = searchForPackageRoot(current)
+  root = searchForPackageRoot(current),
 ): string {
   if (hasRootFile(current)) return current
   if (hasWorkspacePackageJSON(current)) return current
